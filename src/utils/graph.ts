@@ -1,0 +1,9 @@
+import type {FlowEdge,FlowNode,ValidationIssue} from '../types';
+// 稳定图哈希：节点/连线按 id 排序后序列化，用于候选指纹与正式基线比对
+export const graphHash=(nodes:FlowNode[],edges:FlowEdge[]):string=>{const norm={nodes:[...nodes].map(n=>({id:n.id,type:n.type,label:n.data.label,config:n.data.config})).sort((a,b)=>a.id.localeCompare(b.id)),edges:[...edges].map(e=>({id:e.id,source:e.source,target:e.target,label:e.label||''})).sort((a,b)=>a.id.localeCompare(b.id))};const s=JSON.stringify(norm);let h=5381;for(let i=0;i<s.length;i++)h=((h<<5)+h+s.charCodeAt(i))>>>0;return h.toString(16)};
+// 占位审批人：指定成员但成员为占位值或缺省
+export const placeholderOf=(n:FlowNode):string|null=>{if(n.type!=='approval')return null;const a=n.data.config.approver;if(typeof a==='string'&&a.startsWith('占位'))return a;if(n.data.config.approverSource==='指定成员'&&!a)return '未指派占位';return null};
+export const placeholderApprovers=(nodes:FlowNode[])=>nodes.map(n=>({node:n,placeholder:placeholderOf(n)})).filter((x):x is {node:FlowNode;placeholder:string}=>x.placeholder!==null);
+// 试验字段：表单节点中标记 experimental 的字段，晋升时需显式决定保留或移除
+export const experimentalFields=(nodes:FlowNode[])=>nodes.filter(n=>n.type==='form').flatMap(n=>((n.data.config.fields||[]) as any[]).filter(f=>f.experimental).map(f=>({node:n,field:f})));
+export const validateGraph=(nodes:FlowNode[],edges:FlowEdge[]):ValidationIssue[]=>{const issues:ValidationIssue[]=[];if(!nodes.some(n=>n.type==='end'))issues.push({nodeId:nodes[0]?.id||'flow',level:'error',message:'流程缺少结束节点'});const linked=new Set(edges.flatMap(e=>[e.source,e.target]));nodes.filter(n=>n.type!=='start'&&n.type!=='end'&&!linked.has(n.id)).forEach(n=>issues.push({nodeId:n.id,level:'error',message:'必经节点不能孤立'}));nodes.forEach(n=>{if(n.type==='condition'&&!n.data.config.ruleType)issues.push({nodeId:n.id,level:'error',message:'条件分支规则未配置'});if(n.type==='approval'&&!n.data.config.approverSource)issues.push({nodeId:n.id,level:'error',message:'审批人不能为空'})});return issues};

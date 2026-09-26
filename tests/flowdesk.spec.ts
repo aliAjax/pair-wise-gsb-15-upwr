@@ -6,6 +6,19 @@ test.describe.serial('FlowDesk 完整链路',()=>{
  test('发布后列表和总览同步',async({page})=>{await page.goto('/workflows/wf-2');await page.getByTestId('publish-button').click();await expect(page.getByRole('status')).toContainText('发布成功');await page.getByRole('link',{name:'流程管理'}).click();const row=page.getByTestId('workflow-row').filter({hasText:'采购合同审批'});await expect(row).toContainText('已发布');await expect(row).toContainText('v3');await page.getByRole('link',{name:'总览'}).click();await expect(page.getByTestId('kpi-grid')).toBeVisible();});
  test('异常实例详情、时间线与当前节点高亮',async({page})=>{await page.goto('/monitor');await page.getByRole('button',{name:'异常',exact:true}).click();await page.getByTestId('instance-row').first().click();await expect(page.getByTestId('instance-detail')).toBeVisible();await expect(page.getByTestId('execution-timeline')).toContainText('提交申请');await expect(page.locator('.runtime-highlight')).toHaveCount(1);});
  test('版本比较并恢复历史版本',async({page})=>{await page.goto('/workflows/wf-2/versions');await expect(page.getByTestId('version-compare')).toContainText('新增节点');await page.getByTestId('restore-version').click();await expect(page).toHaveURL(/\/workflows\/wf-2$/);await expect(page.getByRole('status')).toContainText('已恢复');await expect(page.getByTestId('flow-canvas')).toBeVisible();});
+ test('校验未过的测试版无法冻结候选',async({page})=>{await page.goto('/workflows/wf-1/promote');await page.getByTestId('freeze-button').click();await expect(page.getByRole('status')).toContainText('校验未过');await expect(page.getByTestId('candidate-card')).toHaveCount(0);});
+ test('环境晋升：缺映射阻止、映射后晋升留痕、晋升后旧候选基线失效',async({page})=>{await page.goto('/workflows/wf-2/promote');await expect(page.getByTestId('candidate-card')).toHaveCount(1);
+  // 未映射占位审批人就晋升：停住并列出节点冲突
+  await page.getByTestId('promote-button').click();await expect(page.getByTestId('promote-conflicts')).toContainText('未映射正式人员');await expect(page.getByTestId('promote-conflicts')).toContainText('直属主管审批');
+  // 映射占位审批人，试验字段保持默认“晋升时移除”，冲突清零后晋升
+  await page.getByLabel('正式人员-approval').selectOption({label:'陈默'});await expect(page.getByTestId('promote-conflicts')).toHaveCount(0);await page.getByTestId('promote-button').click();await expect(page.getByRole('status')).toContainText('已晋升');await expect(page.getByTestId('prod-env')).toContainText('v3');await expect(page.getByTestId('promotion-history')).toContainText('占位·张冠 → 陈默');
+  // 晋升后同一候选基线已变化：再次尝试被阻止
+  await page.getByTestId('promote-button').click();await expect(page.getByTestId('promote-conflicts')).toContainText('正式环境在候选冻结后已变化');
+  // 版本历史留下来源、映射与晋升时间（SPA 内链跳转保留晋升状态）
+  await page.locator('.back-link').first().click();await page.getByRole('button',{name:'版本历史'}).click();await expect(page.getByTestId('release-meta')).toContainText('来源：候选 v1');await expect(page.getByTestId('release-meta')).toContainText('陈默');
+  // 正式预览只认晋升版本，且试验字段未进入正式
+  await page.locator('.back-link').click();await page.getByRole('button',{name:'预览'}).click();await page.getByTestId('env-prod').click();await expect(page.getByText('正式 v3（晋升版本）')).toBeVisible();await expect(page.getByLabel('成本中心（试验）')).toHaveCount(0);});
+ test('预览环境隔离：测试申请走候选快照，正式申请只认晋升版本',async({page})=>{await page.goto('/workflows/wf-2/preview');await expect(page.getByText('候选 v1 快照')).toBeVisible();await expect(page.getByLabel('成本中心（试验）')).toBeVisible();await page.getByTestId('env-prod').click();await expect(page.getByText('正式环境尚未晋升版本')).toBeVisible();});
 });
 
 test('1440px 桌面视觉与控制台验证',async({page})=>{
